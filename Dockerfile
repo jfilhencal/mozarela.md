@@ -26,10 +26,10 @@ RUN npm rebuild sqlite3 --build-from-source || true
 
 # Stage 3: Final production image with nginx + node
 FROM nginx:stable-alpine
-RUN apk add --no-cache nodejs npm
+RUN apk add --no-cache nodejs npm gettext
 
-# Copy Railway-specific nginx config (proxies to localhost instead of separate container)
-COPY nginx-railway.conf /etc/nginx/conf.d/default.conf
+# Copy nginx template (will substitute PORT at runtime)
+COPY nginx-railway.conf /etc/nginx/conf.d/default.conf.template
 
 # Copy built client
 COPY --from=client-builder /app/client/dist /usr/share/nginx/html
@@ -43,17 +43,21 @@ RUN mkdir -p /data
 
 # Environment defaults
 ENV NODE_ENV=production
-ENV PORT=3001
+ENV API_PORT=3001
 ENV DATABASE_FILE=/data/database.db
 ENV COOKIE_SECURE=true
 
-# Create startup script that runs API in background and nginx in foreground
+# Create startup script that handles Railway's dynamic PORT
 RUN echo '#!/bin/sh' > /start.sh && \
+    echo 'export PORT=${PORT:-80}' >> /start.sh && \
+    echo 'echo "Container will listen on port $PORT"' >> /start.sh && \
     echo 'echo "Starting API server on port 3001..."' >> /start.sh && \
     echo 'cd /app && node server.js &' >> /start.sh && \
     echo 'API_PID=$!' >> /start.sh && \
     echo 'echo "API started with PID $API_PID"' >> /start.sh && \
-    echo 'sleep 2' >> /start.sh && \
+    echo 'sleep 3' >> /start.sh && \
+    echo 'echo "Configuring Nginx to listen on port $PORT..."' >> /start.sh && \
+    echo 'envsubst '"'"'$PORT'"'"' < /etc/nginx/conf.d/default.conf.template > /etc/nginx/conf.d/default.conf' >> /start.sh && \
     echo 'echo "Starting Nginx..."' >> /start.sh && \
     echo 'nginx -g "daemon off;"' >> /start.sh && \
     chmod +x /start.sh
