@@ -1,0 +1,15 @@
+
+node_modules
+**/node_modules
+dist
+.DS_Store
+.env
+*.db
+*.sqlite
+.vscode
+npm-debug.log
+.git
+.gitignore
+Client/dist
+API/node_modules
+Client/node_modules

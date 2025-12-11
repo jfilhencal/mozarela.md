@@ -1,0 +1,26 @@
+services:
+  api:
+    build: ./API
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - DATABASE_FILE=/data/database.db
+      - COOKIE_SECURE=false
+      - API_ALLOWED_ORIGIN=http://localhost:8080
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+    volumes:
+      - ./API/database.db:/data/database.db
+    restart: unless-stopped
+
+  client:
+    build:
+      context: ./Client
+      args:
+        VITE_API_BASE: /api
+        VITE_ADSENSE_PUBLISHER_ID: ${VITE_ADSENSE_PUBLISHER_ID:-ca-pub-0000000000000000}
+    ports:
+      - "8080:80"
+    # No runtime VITE_API_BASE needed: client will use relative /api and nginx will proxy to api:3001
+    restart: unless-stopped

@@ -1,0 +1,5 @@
+{
+  "name": "Mozarela.MD",
+  "description": "An advanced differential diagnosis assistant for veterinarians. Input clinical signs, species data, and lab images to receive ranked diagnoses, probabilities, and treatment plans powered by Gemini.",
+  "requestFramePermissions": []
+}

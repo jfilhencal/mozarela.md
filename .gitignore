@@ -1,0 +1,7 @@
+.env
+API/.env
+Client/.env.local
+Client/.env
+node_modules/
+*.db
+*.sqlite
