@@ -28,8 +28,8 @@ RUN npm rebuild sqlite3 --build-from-source || true
 FROM nginx:stable-alpine
 RUN apk add --no-cache nodejs npm
 
-# Copy nginx config
-COPY Client/nginx/default.conf /etc/nginx/conf.d/default.conf
+# Copy Railway-specific nginx config (proxies to localhost instead of separate container)
+COPY nginx-railway.conf /etc/nginx/conf.d/default.conf
 
 # Copy built client
 COPY --from=client-builder /app/client/dist /usr/share/nginx/html
@@ -38,9 +38,23 @@ COPY --from=client-builder /app/client/dist /usr/share/nginx/html
 WORKDIR /app
 COPY --from=api-builder /app/api ./
 
-# Create startup script
+# Create data directory for SQLite
+RUN mkdir -p /data
+
+# Environment defaults
+ENV NODE_ENV=production
+ENV PORT=3001
+ENV DATABASE_FILE=/data/database.db
+ENV COOKIE_SECURE=true
+
+# Create startup script that runs API in background and nginx in foreground
 RUN echo '#!/bin/sh' > /start.sh && \
-    echo 'node /app/server.js &' >> /start.sh && \
+    echo 'echo "Starting API server on port 3001..."' >> /start.sh && \
+    echo 'cd /app && node server.js &' >> /start.sh && \
+    echo 'API_PID=$!' >> /start.sh && \
+    echo 'echo "API started with PID $API_PID"' >> /start.sh && \
+    echo 'sleep 2' >> /start.sh && \
+    echo 'echo "Starting Nginx..."' >> /start.sh && \
     echo 'nginx -g "daemon off;"' >> /start.sh && \
     chmod +x /start.sh
 
