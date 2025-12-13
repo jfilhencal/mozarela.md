@@ -3,6 +3,7 @@ import InputSection from './components/InputSection';
 import ResultsSection from './components/ResultsSection';
 import CaseHistory from './components/CaseHistory';
 import AuthScreen from './components/AuthScreen';
+import LandingPage from './components/LandingPage';
 import AdUnit from './components/AdUnit';
 import { CaseData, DiagnosisResponse, LoadingState, SavedCase, User } from './types';
 import { analyzeCase } from './services/geminiService';
@@ -15,6 +16,7 @@ const App: React.FC = () => {
   // Auth State
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [showAuthScreen, setShowAuthScreen] = useState(false);
 
   // App State
   const [view, setView] = useState<'new' | 'history'>('new');
@@ -149,7 +151,10 @@ const App: React.FC = () => {
   }
 
   if (!currentUser) {
-    return <AuthScreen onLogin={setCurrentUser} />;
+    if (showAuthScreen) {
+      return <AuthScreen onLogin={setCurrentUser} />;
+    }
+    return <LandingPage onShowAuth={() => setShowAuthScreen(true)} />;
   }
 
   return (
