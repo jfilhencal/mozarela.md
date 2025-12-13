@@ -26,17 +26,22 @@ RUN npm rebuild sqlite3 --build-from-source || true
 
 # Stage 3: Final production image with nginx + node
 FROM nginx:stable-alpine
-RUN apk add --no-cache nodejs npm gettext
+RUN apk add --no-cache nodejs npm gettext python3 make g++
 
-# Copy nginx template (will substitute PORT at runtime)
+# Copy Railway-specific nginx config (will substitute PORT at runtime)
 COPY nginx-railway.conf /etc/nginx/conf.d/default.conf.template
 
 # Copy built client
 COPY --from=client-builder /app/client/dist /usr/share/nginx/html
 
-# Copy API
+# Copy API (without node_modules initially)
 WORKDIR /app
-COPY --from=api-builder /app/api ./
+COPY --from=api-builder /app/api/package*.json ./
+COPY --from=api-builder /app/api/*.js ./
+
+# Reinstall dependencies and rebuild sqlite3 for Alpine
+RUN npm install --omit=dev && \
+    npm rebuild sqlite3 --build-from-source
 
 # Create data directory for SQLite
 RUN mkdir -p /data
