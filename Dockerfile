@@ -26,7 +26,15 @@ RUN npm rebuild sqlite3 --build-from-source || true
 
 # Stage 3: Final production image with nginx + node
 FROM nginx:stable-alpine
-RUN apk add --no-cache nodejs npm gettext python3 make g++
+# Install build dependencies for native modules
+RUN apk add --no-cache \
+    nodejs \
+    npm \
+    gettext \
+    python3 \
+    py3-setuptools \
+    make \
+    g++
 
 # Copy Railway-specific nginx config (will substitute PORT at runtime)
 COPY nginx-railway.conf /etc/nginx/conf.d/default.conf.template
