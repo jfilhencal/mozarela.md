@@ -3,7 +3,6 @@ import InputSection from './components/InputSection';
 import ResultsSection from './components/ResultsSection';
 import CaseHistory from './components/CaseHistory';
 import AuthScreen from './components/AuthScreen';
-import DatabaseControls from './components/DatabaseControls';
 import AdUnit from './components/AdUnit';
 import { CaseData, DiagnosisResponse, LoadingState, SavedCase, User } from './types';
 import { analyzeCase } from './services/geminiService';
@@ -144,7 +143,7 @@ const App: React.FC = () => {
   if (authLoading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <Activity className="animate-bounce w-10 h-10 text-medical-600" />
+        <img src="/logo.PNG" alt="Loading..." className="animate-bounce w-12 h-12 object-contain" />
       </div>
     );
   }
@@ -161,9 +160,7 @@ const App: React.FC = () => {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex items-center gap-2 cursor-pointer" onClick={switchToNew}>
-              <div className="bg-medical-600 p-2 rounded-lg shadow-sm">
-                <Activity className="h-6 w-6 text-white" />
-              </div>
+              <img src="/logo.PNG" alt="Mozarela.MD" className="h-10 w-10 object-contain" />
               <div className="flex flex-col">
                 <span className="font-bold text-xl tracking-tight text-slate-900">Mozarela.MD</span>
                 <span className="text-[10px] uppercase tracking-wider text-medical-600 font-semibold">Clinical Assistant</span>
@@ -212,7 +209,6 @@ const App: React.FC = () => {
         {view === 'history' ? (
           <div className="space-y-8 animate-in fade-in duration-500">
             <CaseHistory onSelectCase={handleSelectCase} />
-            <DatabaseControls />
           </div>
         ) : (
           <>

@@ -62,13 +62,19 @@ ENV COOKIE_SECURE=true
 
 # Create startup script that handles Railway's dynamic PORT
 RUN echo '#!/bin/sh' > /start.sh && \
+    echo 'set -e' >> /start.sh && \
     echo 'export PORT=${PORT:-80}' >> /start.sh && \
     echo 'echo "Container will listen on port $PORT"' >> /start.sh && \
+    echo '' >> /start.sh && \
+    echo '# Kill any existing nginx processes' >> /start.sh && \
+    echo 'pkill nginx || true' >> /start.sh && \
+    echo '' >> /start.sh && \
     echo 'echo "Starting API server on port 3001..."' >> /start.sh && \
     echo 'cd /app && node server.js &' >> /start.sh && \
     echo 'API_PID=$!' >> /start.sh && \
     echo 'echo "API started with PID $API_PID"' >> /start.sh && \
     echo 'sleep 3' >> /start.sh && \
+    echo '' >> /start.sh && \
     echo 'echo "Configuring Nginx to listen on port $PORT..."' >> /start.sh && \
     echo 'envsubst '"'"'$PORT'"'"' < /etc/nginx/conf.d/default.conf.template > /etc/nginx/conf.d/default.conf' >> /start.sh && \
     echo 'echo "Starting Nginx..."' >> /start.sh && \

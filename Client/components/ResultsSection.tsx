@@ -34,43 +34,48 @@ const ResultsSection: React.FC<ResultsSectionProps> = ({ data }) => {
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
       
-      {/* Summary Card */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 border-l-4 border-l-medical-500">
-        <h3 className="text-lg font-semibold text-slate-800 mb-2 flex items-center">
-          <Activity className="w-5 h-5 mr-2 text-medical-600" />
-          Clinical Summary
-        </h3>
-        <p className="text-slate-600 leading-relaxed">
-          {data.summary}
-        </p>
-      </div>
-
-      {/* Probability Chart */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-        <h3 className="text-lg font-semibold text-slate-800 mb-4">Probability Distribution (Top 5)</h3>
-        <div className="h-64 w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chartData} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-              <XAxis type="number" domain={[0, 100]} unit="%" />
-              <YAxis type="category" dataKey="name" width={100} tick={{fontSize: 12}} />
-              <Tooltip 
-                contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                cursor={{fill: '#f1f5f9'}}
-                formatter={(value: number) => [`${value}%`, 'Probability']}
-              />
-              <Bar dataKey="probability" radius={[0, 4, 4, 0]} barSize={20}>
-                {chartData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={index === 0 ? '#0ea5e9' : '#94a3b8'} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+      {/* Summary Card - Chat Style */}
+      <div className="flex gap-3 items-start animate-in fade-in slide-in-from-bottom-4 duration-700">
+        <img src="/logo.PNG" alt="Mozarela.MD" className="w-12 h-12 flex-shrink-0 object-contain" />
+        <div className="bg-medical-600 text-white rounded-2xl rounded-tl-sm p-4 shadow-md max-w-3xl">
+          <p className="text-sm font-medium mb-1 opacity-90">Clinical Summary</p>
+          <p className="leading-relaxed">
+            {data.summary}
+          </p>
         </div>
       </div>
 
-      {/* Detailed List */}
-      <div className="space-y-4">
+      {/* Probability Chart - Chat Style */}
+      <div className="flex gap-3 items-start">
+        <img src="/logo.PNG" alt="Mozarela.MD" className="w-12 h-12 flex-shrink-0 object-contain" />
+        <div className="bg-white rounded-2xl rounded-tl-sm shadow-md border border-slate-200 p-6 max-w-3xl flex-1">
+          <h3 className="text-lg font-semibold text-slate-800 mb-4">Probability Distribution (Top 5)</h3>
+          <div className="h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                <XAxis type="number" domain={[0, 100]} unit="%" />
+                <YAxis type="category" dataKey="name" width={100} tick={{fontSize: 12}} />
+                <Tooltip 
+                  contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                  cursor={{fill: '#f1f5f9'}}
+                  formatter={(value: number) => [`${value}%`, 'Probability']}
+                />
+                <Bar dataKey="probability" radius={[0, 4, 4, 0]} barSize={20}>
+                  {chartData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={index === 0 ? '#0ea5e9' : '#94a3b8'} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
+      {/* Detailed List - Chat Style */}
+      <div className="flex gap-3 items-start">
+        <img src="/logo.PNG" alt="Mozarela.MD" className="w-12 h-12 flex-shrink-0 object-contain" />
+        <div className="space-y-4 flex-1 max-w-3xl">
         <h3 className="text-xl font-bold text-slate-800 flex items-center">
           <Stethoscope className="w-6 h-6 mr-2 text-medical-600" />
           Differential Diagnoses
@@ -145,6 +150,7 @@ const ResultsSection: React.FC<ResultsSectionProps> = ({ data }) => {
             )}
           </div>
         ))}
+        </div>
       </div>
     </div>
   );

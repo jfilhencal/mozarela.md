@@ -45,8 +45,8 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
       
       {/* Logo Section */}
       <div className="text-center mb-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-        <div className="bg-medical-600 p-3 rounded-2xl inline-block shadow-lg mb-4">
-          <Activity className="h-10 w-10 text-white" />
+        <div className="inline-block mb-4">
+          <img src="/logo.PNG" alt="Mozarela" className="h-32 w-32 object-contain" />
         </div>
         <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">Mozarela.MD</h1>
         <p className="text-slate-500 mt-2">Veterinary Differential Diagnosis System</p>
