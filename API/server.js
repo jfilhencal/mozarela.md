@@ -541,7 +541,8 @@ if (fs.existsSync(clientDist)) {
 }
 
 // Start server after ensuring schema
-const PORT = Number(process.env.PORT || process.env.APP_PORT || 3001);
+// Always use port 3001 for API (nginx will proxy from Railway's PORT)
+const PORT = Number(process.env.API_PORT || 3001);
 let server = null;
 ensureSchema().then(() => {
   server = app.listen(PORT, () => console.log(`API running on http://localhost:${PORT}`));
