@@ -87,7 +87,8 @@ const ensureSchema = async () => {
       userId TEXT,
       createdAt INTEGER,
       expiresAt INTEGER,
-      csrfToken TEXT
+      csrfToken TEXT,
+      lastUsedAt INTEGER
     )`
   );
   
@@ -99,6 +100,11 @@ const ensureSchema = async () => {
   }
   try {
     await db.run('ALTER TABLE sessions ADD COLUMN csrfToken TEXT');
+  } catch (e) {
+    // Column already exists
+  }
+  try {
+    await db.run('ALTER TABLE sessions ADD COLUMN lastUsedAt INTEGER');
   } catch (e) {
     // Column already exists
   }
@@ -289,7 +295,7 @@ app.post('/api/auth/register', async (req, res) => {
     const ttlMs = Number(process.env.SESSION_TTL_MS || 30 * 24 * 60 * 60 * 1000);
     const expiresAt = createdAt + ttlMs;
     const csrfToken = randomUUID();
-    await db.run('INSERT INTO sessions (token, userId, createdAt, expiresAt, csrfToken) VALUES (?, ?, ?, ?, ?)', [token, id, createdAt, expiresAt, csrfToken]);
+    await db.run('INSERT INTO sessions (token, userId, createdAt, expiresAt, csrfToken, lastUsedAt) VALUES (?, ?, ?, ?, ?, ?)', [token, id, createdAt, expiresAt, csrfToken, createdAt]);
     // cookie options
   const cookieOpts = { httpOnly: true, sameSite: process.env.COOKIE_SAMESITE || 'lax' };
   // If running behind a proxy and serving TLS, set COOKIE_SECURE=true in env
@@ -342,7 +348,7 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
   const ttlMs = Number(process.env.SESSION_TTL_MS || 30 * 24 * 60 * 60 * 1000);
   const expiresAt = createdAt + ttlMs;
   const csrfToken = randomUUID();
-  await db.run('INSERT INTO sessions (token, userId, createdAt, expiresAt, csrfToken) VALUES (?, ?, ?, ?, ?)', [token, row.id, createdAt, expiresAt, csrfToken]);
+  await db.run('INSERT INTO sessions (token, userId, createdAt, expiresAt, csrfToken, lastUsedAt) VALUES (?, ?, ?, ?, ?, ?)', [token, row.id, createdAt, expiresAt, csrfToken, createdAt]);
   const cookieOpts = { httpOnly: true, sameSite: process.env.COOKIE_SAMESITE || 'lax' };
   if (process.env.COOKIE_SECURE === 'true' || (process.env.NODE_ENV === 'production' && process.env.COOKIE_SECURE !== 'false')) cookieOpts['secure'] = true;
   res.cookie('session_token', token, { ...cookieOpts, maxAge: ttlMs });
@@ -392,6 +398,24 @@ app.delete('/api/sessions/:token', async (req, res) => {
   res.json({ success: true });
 });
 
+// Refresh/extend session expiration
+app.post('/api/sessions/refresh', validateSession, async (req, res) => {
+  try {
+    const token = req.session?.token;
+    if (!token) return res.status(401).json({ error: 'No active session' });
+    
+    const ttlMs = Number(process.env.SESSION_TTL_MS || 30 * 24 * 60 * 60 * 1000);
+    const newExpiresAt = Date.now() + ttlMs;
+    
+    await db.run('UPDATE sessions SET expiresAt = ?, lastUsedAt = ? WHERE token = ?', [newExpiresAt, Date.now(), token]);
+    
+    res.json({ success: true, expiresAt: newExpiresAt });
+  } catch (e) {
+    console.error('Session refresh error:', e);
+    res.status(500).json({ error: 'Failed to refresh session' });
+  }
+});
+
 // Session validation middleware (can be applied to protected routes)
 async function validateSession(req, res, next) {
   try {
@@ -405,6 +429,8 @@ async function validateSession(req, res, next) {
       await db.run('DELETE FROM sessions WHERE token = ?', [token]);
       return res.status(401).json({ error: 'Session expired' });
     }
+    // Update last used timestamp for session activity tracking
+    await db.run('UPDATE sessions SET lastUsedAt = ? WHERE token = ?', [Date.now(), token]);
     req.session = { token: s.token, userId: s.userId };
     next();
   } catch (e) {
@@ -862,18 +888,39 @@ async function ensureAdminUser() {
   }
 }
 
+// Cleanup expired sessions periodically
+const cleanupExpiredSessions = async () => {
+  try {
+    const now = Date.now();
+    const result = await db.run('DELETE FROM sessions WHERE expiresAt IS NOT NULL AND expiresAt < ?', [now]);
+    if (result.changes > 0) {
+      console.log(`🧹 Cleaned up ${result.changes} expired session(s)`);
+    }
+  } catch (e) {
+    console.error('Session cleanup error:', e);
+  }
+};
+
 // Start server after ensuring schema
 // Always use port 3001 for API (nginx will proxy from Railway's PORT)
 const PORT = Number(process.env.API_PORT || 3001);
 let server = null;
 ensureSchema().then(async () => {
   await ensureAdminUser();
+  
+  // Run initial cleanup
+  await cleanupExpiredSessions();
+  
+  // Schedule periodic cleanup (every hour)
+  const cleanupInterval = setInterval(cleanupExpiredSessions, 60 * 60 * 1000);
+  
   server = app.listen(PORT, () => console.log(`API running on http://localhost:${PORT}`));
 
   // graceful shutdown
   const shutdown = async () => {
     console.log('Shutting down...');
     try {
+      if (cleanupInterval) clearInterval(cleanupInterval);
       if (server) server.close();
       // close DB connection if available
       if (db && typeof db.close === 'function') await db.close();
