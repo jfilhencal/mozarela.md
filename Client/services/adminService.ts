@@ -50,6 +50,10 @@ export interface AdminCase {
   timestamp: number;
   userEmail?: string;
   userFullName?: string;
+  userId?: string;
+  analysisMode?: string;
+  patientName?: string;
+  species?: string;
   data: any;
   results?: any;
 }

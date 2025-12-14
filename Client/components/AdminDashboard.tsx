@@ -275,6 +275,8 @@ export default function AdminDashboard() {
                   <tr>
                     <th style={{ padding: '12px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#374151' }}>Data</th>
                     <th style={{ padding: '12px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#374151' }}>Utilizador</th>
+                    <th style={{ padding: '12px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#374151' }}>Paciente</th>
+                    <th style={{ padding: '12px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#374151' }}>Análise</th>
                     <th style={{ padding: '12px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#374151' }}>ID</th>
                     <th style={{ padding: '12px', textAlign: 'right', fontSize: '13px', fontWeight: '600', color: '#374151' }}>Ações</th>
                   </tr>
@@ -282,7 +284,7 @@ export default function AdminDashboard() {
                 <tbody>
                   {filteredCases.length === 0 ? (
                     <tr>
-                      <td colSpan={4} style={{ padding: '40px', textAlign: 'center', color: '#9ca3af' }}>
+                      <td colSpan={6} style={{ padding: '40px', textAlign: 'center', color: '#9ca3af' }}>
                         Nenhum caso encontrado
                       </td>
                     </tr>
@@ -293,8 +295,30 @@ export default function AdminDashboard() {
                           {new Date(c.timestamp).toLocaleString('pt-PT')}
                         </td>
                         <td style={{ padding: '12px', fontSize: '14px', color: '#374151' }}>
-                          <div>{c.userFullName || 'N/A'}</div>
-                          <div style={{ fontSize: '12px', color: '#9ca3af' }}>{c.userEmail || 'N/A'}</div>
+                          {c.userFullName || c.userEmail ? (
+                            <>
+                              <div>{c.userFullName || 'Sem nome'}</div>
+                              <div style={{ fontSize: '12px', color: '#9ca3af' }}>{c.userEmail}</div>
+                            </>
+                          ) : (
+                            <div style={{ fontSize: '12px', color: '#ef4444', fontStyle: 'italic' }}>Caso sem utilizador</div>
+                          )}
+                        </td>
+                        <td style={{ padding: '12px', fontSize: '14px', color: '#374151' }}>
+                          <div>{c.patientName || 'N/A'}</div>
+                          <div style={{ fontSize: '12px', color: '#9ca3af' }}>{c.species || ''}</div>
+                        </td>
+                        <td style={{ padding: '12px', fontSize: '14px', color: '#374151' }}>
+                          <span style={{
+                            padding: '4px 8px',
+                            borderRadius: '4px',
+                            fontSize: '12px',
+                            fontWeight: '500',
+                            backgroundColor: c.analysisMode === 'AI' ? '#dbeafe' : c.analysisMode === 'WEIGHTED' ? '#fef3c7' : '#f3f4f6',
+                            color: c.analysisMode === 'AI' ? '#1e40af' : c.analysisMode === 'WEIGHTED' ? '#92400e' : '#6b7280'
+                          }}>
+                            {c.analysisMode === 'AI' ? '🤖 AI' : c.analysisMode === 'WEIGHTED' ? '⚖️ Ponderada' : '❓ Desconhecida'}
+                          </span>
                         </td>
                         <td style={{ padding: '12px', fontSize: '13px', fontFamily: 'monospace', color: '#6b7280' }}>
                           {c.id.substring(0, 12)}...

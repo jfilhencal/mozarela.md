@@ -76,7 +76,8 @@ const ensureSchema = async () => {
       password TEXT,
       fullName TEXT,
       clinicName TEXT,
-      data TEXT
+      data TEXT,
+      isAdmin INTEGER DEFAULT 0
     )`
   );
 
@@ -84,25 +85,38 @@ const ensureSchema = async () => {
     `CREATE TABLE IF NOT EXISTS sessions (
       token TEXT PRIMARY KEY,
       userId TEXT,
-      createdAt INTEGER
+      createdAt INTEGER,
+      expiresAt INTEGER,
+      csrfToken TEXT
     )`
   );
-  // add expiresAt column if it doesn't exist yet
+  
+  // Add missing columns to existing tables (for backwards compatibility)
   try {
     await db.run('ALTER TABLE sessions ADD COLUMN expiresAt INTEGER');
   } catch (e) {
-    // ignore - likely already added
+    // Column already exists
   }
   try {
     await db.run('ALTER TABLE sessions ADD COLUMN csrfToken TEXT');
   } catch (e) {
-    // ignore
+    // Column already exists
   }
-  // add isAdmin column if it doesn't exist yet
   try {
     await db.run('ALTER TABLE users ADD COLUMN isAdmin INTEGER DEFAULT 0');
   } catch (e) {
-    // ignore - likely already added
+    // Column already exists
+  }
+  
+  // Create indexes for better query performance
+  try {
+    await db.run('CREATE INDEX IF NOT EXISTS idx_cases_timestamp ON cases(timestamp DESC)');
+    await db.run('CREATE INDEX IF NOT EXISTS idx_sessions_userId ON sessions(userId)');
+    await db.run('CREATE INDEX IF NOT EXISTS idx_sessions_expiresAt ON sessions(expiresAt)');
+    await db.run('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)');
+    await db.run('CREATE INDEX IF NOT EXISTS idx_users_isAdmin ON users(isAdmin)');
+  } catch (e) {
+    console.error('Warning: Failed to create indexes:', e.message);
   }
 };
 
@@ -500,12 +514,17 @@ app.get('/api/admin/cases', validateSession, requireAdmin, async (req, res) => {
     const cases = rows.map(r => {
       try {
         const parsed = JSON.parse(r.data || '{}');
+        const caseData = parsed.data || {};
         return {
           id: r.id,
           timestamp: r.timestamp,
           userEmail: r.email,
           userFullName: r.fullName,
-          data: parsed.data || parsed,
+          userId: parsed.userId,
+          analysisMode: caseData.analysisMode || 'Unknown',
+          patientName: caseData.patientName,
+          species: caseData.species,
+          data: caseData,
           results: parsed.results
         };
       } catch (e) {
