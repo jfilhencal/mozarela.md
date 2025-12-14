@@ -1,0 +1,21 @@
+# Development docker-compose override
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  api:
+    environment:
+      - NODE_ENV=development
+      - DATABASE_FILE=/data/database-dev.db
+    volumes:
+      - ./API:/app
+      - ./API/database-dev.db:/data/database-dev.db
+      - /app/node_modules
+    command: npm run dev
+
+  client:
+    volumes:
+      - ./Client:/app
+      - /app/node_modules
+      - /app/dist
+    environment:
+      - NODE_ENV=development

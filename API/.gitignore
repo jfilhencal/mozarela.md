@@ -1,0 +1,23 @@
+# Environment variables (add to .gitignore)
+.env
+.env.local
+.env.*.local
+
+# Databases
+database.db
+database-dev.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Dependencies
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db
