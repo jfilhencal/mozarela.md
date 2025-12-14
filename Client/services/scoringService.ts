@@ -85,69 +85,85 @@ export const analyzeWithScoring = async (caseData: CaseData): Promise<DiagnosisR
     };
   }
 
-  // 2. AI Refinement Step
-  // We send the locally calculated matches to Gemini to adjust for Signalment (Breed, Age, Weight)
-  const model = "gemini-2.5-flash";
-  const prompt = `You are a veterinary clinical assistant helping to refine a weighted scoring analysis.\n
-PATIENT DATA:\n- Species: ${caseData.species}\n- Breed: ${caseData.breed || 'Unknown'}\n- Age: ${caseData.age}\n- Weight: ${caseData.weight}\n- Clinical Signs: ${caseData.clinicalSigns}\n- Lab Findings: ${caseData.labFindings || 'None'}\n\nPROTOCOL MATCHES (Baseline):\n${JSON.stringify(potentialMatches, null, 2)}\n\nINSTRUCTIONS: Adjust the scores moderately (+/-10-20) based on signalment and lab findings. Return strict JSON with { summary, diagnoses } as described.`;
+  // 2. Use Protocol Scores Directly (No AI Adjustment)
+  // Map protocol matches to diagnosis format using base_score as probability
+  const diagnoses = potentialMatches
+    .sort((a, b) => b.base_score - a.base_score)
+    .map(m => ({
+      name: m.name,
+      probability: m.base_score,
+      reasoning: `Protocol match based on: ${m.matched_keywords.join(', ')}`,
+      suggested_tests: m.original_tests ? m.original_tests.split(',').map(t => t.trim()) : [],
+      treatment_plan: m.original_plan || 'See protocol file for details'
+    }));
 
-  // Proxy to server-side AI endpoint
+  console.log('[Scoring] Protocol-based diagnoses:', diagnoses);
+
+  // 3. Optional AI Considerations (does not modify scores)
+  let summary = `Analysis performed using Weighted Scoring System based on "${caseData.scoringFile?.name}". ${diagnoses.length} condition(s) matched the clinical presentation.`;
+  
   const apiBase = (import.meta.env?.VITE_API_BASE as string) || '';
-  if (!apiBase) {
-    // No server configured — fallback immediately
-    const fallbackDiagnoses = potentialMatches
-      .sort((a, b) => b.base_score - a.base_score)
-      .map(m => ({
-        name: m.name,
-        probability: m.base_score,
-        reasoning: `Protocol Match: ${m.matched_keywords.join(', ')}. (No server configured)` ,
-        suggested_tests: [m.original_tests],
-        treatment_plan: m.original_plan
-      }));
+  console.log('[Scoring] Attempting AI considerations. API Base:', apiBase);
+  
+  if (apiBase) {
+    try {
+      const considerationsPrompt = `You are a veterinary clinical assistant. Based on the protocol analysis below, provide brief clinical considerations.
 
-    return { summary: 'Local-only analysis (no server AI proxy configured).', diagnoses: fallbackDiagnoses };
-  }
+PATIENT DATA:
+- Species: ${caseData.species}
+- Breed: ${caseData.breed || 'Unknown'}
+- Age: ${caseData.age}
+- Weight: ${caseData.weight}
+- Clinical Signs: ${caseData.clinicalSigns}
+- Lab Findings: ${caseData.labFindings || 'None'}
 
-  const form = new FormData();
-  form.append('prompt', prompt);
-  form.append('model', model);
-  form.append('matches', JSON.stringify(potentialMatches));
+PROTOCOL ANALYSIS RESULTS (scores based on protocol file):
+${diagnoses.slice(0, 5).map(d => `- ${d.name}: ${d.probability}% probability`).join('\n')}
 
-  const csrf = (() => { try { return localStorage.getItem('mozarela_csrf') } catch(e){ return null } })();
+Provide 2-3 sentences of clinical considerations based on the signalment and findings. Do NOT adjust the scores. Return ONLY plain text, no JSON.`;
 
-  try {
-    // Avoid duplicating /api when apiBase is '/api'
-    const base = apiBase.replace(/\/$/, '');
-    const url = base === '' ? '/api/analyze' : (base === '/api' ? `${base}/analyze` : `${base}/api/analyze`);
+      const form = new FormData();
+      form.append('prompt', considerationsPrompt);
+      form.append('model', 'gemini-2.0-flash-exp');
+      
+      const csrf = (() => { try { return localStorage.getItem('mozarela_csrf') } catch(e){ return null } })();
+      const base = apiBase.replace(/\/$/, '');
+      const url = base === '' ? '/api/analyze' : (base === '/api' ? `${base}/analyze` : `${base}/api/analyze`);
 
-    const res = await fetch(url, {
-      method: 'POST',
-      body: form,
-      credentials: 'include',
-      headers: csrf ? { 'x-csrf-token': csrf } : undefined
-    });
+      console.log('[Scoring] Fetching AI considerations from:', url);
 
-    if (!res.ok) {
-      throw new Error(`AI proxy error ${res.status}: ${await res.text()}`);
+      const res = await fetch(url, {
+        method: 'POST',
+        body: form,
+        credentials: 'include',
+        headers: csrf ? { 'x-csrf-token': csrf } : undefined
+      });
+
+      console.log('[Scoring] AI response status:', res.status);
+
+      if (res.ok) {
+        const json = await res.json();
+        console.log('[Scoring] AI response JSON:', json);
+        
+        // Try multiple paths to get the text
+        const considerations = json.text || json.parsed || (json.raw && json.raw.text) || '';
+        console.log('[Scoring] Extracted considerations:', considerations);
+        
+        if (considerations && typeof considerations === 'string' && considerations.trim()) {
+          summary += `\n\nClinical Considerations: ${considerations.trim()}`;
+        } else if (typeof considerations === 'object' && considerations.text) {
+          summary += `\n\nClinical Considerations: ${considerations.text.trim()}`;
+        }
+      } else {
+        console.warn('[Scoring] AI response not OK:', await res.text());
+      }
+    } catch (err) {
+      console.warn('[Scoring] AI considerations error:', err);
     }
-
-    const json = await res.json();
-    if (json.parsed) return json.parsed as DiagnosisResponse;
-    if (json.text) return JSON.parse(json.text) as DiagnosisResponse;
-    if (json.raw && json.raw.text) return JSON.parse(json.raw.text) as DiagnosisResponse;
-    throw new Error('Unexpected AI proxy response');
-  } catch (err) {
-    console.warn('AI Refinement failed, falling back to raw protocol scores.', err);
-    const fallbackDiagnoses = potentialMatches
-      .sort((a, b) => b.base_score - a.base_score)
-      .map(m => ({
-        name: m.name,
-        probability: m.base_score,
-        reasoning: `Protocol Match: ${m.matched_keywords.join(', ')}. (AI Refinement unavailable)`,
-        suggested_tests: [m.original_tests],
-        treatment_plan: m.original_plan
-      }));
-
-    return { summary: 'Analysis based strictly on protocol file (AI refinement unavailable).', diagnoses: fallbackDiagnoses };
   }
+
+  return {
+    summary,
+    diagnoses
+  };
 };

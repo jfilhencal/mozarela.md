@@ -7,6 +7,10 @@ export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
     return {
       publicDir: 'public',
+      define: {
+        'process.env': {},
+        'process': JSON.stringify({})
+      },
       server: {
         port: 3000,
         host: '0.0.0.0',

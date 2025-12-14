@@ -48,9 +48,9 @@ const ResultsSection: React.FC<ResultsSectionProps> = ({ data }) => {
       {/* Probability Chart - Chat Style */}
       <div className="flex gap-3 items-start">
         <img src="/logo.PNG" alt="Mozarela.MD" className="w-12 h-12 flex-shrink-0 object-contain" />
-        <div className="bg-white rounded-2xl rounded-tl-sm shadow-md border border-slate-200 p-6 max-w-3xl flex-1">
+        <div className="bg-white rounded-2xl rounded-tl-sm shadow-md border border-slate-200 p-6 w-full">
           <h3 className="text-lg font-semibold text-slate-800 mb-4">Probability Distribution (Top 5)</h3>
-          <div className="h-64 w-full">
+          <div style={{ width: '100%', height: '256px' }}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} />
@@ -129,7 +129,7 @@ const ResultsSection: React.FC<ResultsSectionProps> = ({ data }) => {
                         Suggested Diagnostics
                       </h5>
                       <ul className="list-disc list-inside space-y-1">
-                        {diagnosis.suggested_tests.map((test, i) => (
+                        {(diagnosis.suggested_tests || []).map((test, i) => (
                           <li key={i} className="text-sm text-slate-600">{test}</li>
                         ))}
                       </ul>
