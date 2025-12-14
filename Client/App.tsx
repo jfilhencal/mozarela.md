@@ -4,6 +4,7 @@ import ResultsSection from './components/ResultsSection';
 import CaseHistory from './components/CaseHistory';
 import AuthScreen from './components/AuthScreen';
 import LandingPage from './components/LandingPage';
+import AdminDashboard from './components/AdminDashboard';
 import AdUnit from './components/AdUnit';
 import { CaseData, DiagnosisResponse, LoadingState, SavedCase, User } from './types';
 import { analyzeCase } from './services/geminiService';
@@ -19,7 +20,7 @@ const App: React.FC = () => {
   const [showAuthScreen, setShowAuthScreen] = useState(false);
 
   // App State
-  const [view, setView] = useState<'new' | 'history'>('new');
+  const [view, setView] = useState<'new' | 'history' | 'admin'>('new');
   const [results, setResults] = useState<DiagnosisResponse | null>(null);
   const [inputData, setInputData] = useState<CaseData | undefined>(undefined);
   const [loading, setLoading] = useState<LoadingState>({ isLoading: false, message: '' });
@@ -195,6 +196,16 @@ const App: React.FC = () => {
                  <span className="hidden sm:inline">History</span>
                </button>
                
+               {currentUser.isAdmin && (
+                 <button 
+                   onClick={() => setView('admin')}
+                   className={`flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-colors ${view === 'admin' ? 'bg-amber-50 text-amber-700' : 'text-slate-600 hover:bg-slate-50'}`}
+                 >
+                   <ShieldCheck className="w-4 h-4 mr-2" />
+                   <span className="hidden sm:inline">Admin</span>
+                 </button>
+               )}
+               
                <div className="h-6 w-px bg-slate-200 mx-1"></div>
 
                <button 
@@ -211,7 +222,11 @@ const App: React.FC = () => {
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
         
-        {view === 'history' ? (
+        {view === 'admin' ? (
+          <div className="space-y-8 animate-in fade-in duration-500">
+            <AdminDashboard />
+          </div>
+        ) : view === 'history' ? (
           <div className="space-y-8 animate-in fade-in duration-500">
             <CaseHistory onSelectCase={handleSelectCase} />
           </div>

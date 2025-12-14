@@ -30,6 +30,7 @@ export interface User {
   password: string; // Stored locally for this standalone app
   fullName: string;
   clinicName?: string;
+  isAdmin?: boolean;
   savedScoringConfig?: {
     fileName: string;
     content: string;

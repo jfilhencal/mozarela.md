@@ -29,6 +29,23 @@ const limiter = rateLimit({
   legacyHeaders: false,
 });
 app.use(limiter);
+
+// Stricter rate limiter for admin endpoints
+const adminLimiter = rateLimit({
+  windowMs: Number(process.env.ADMIN_RATE_LIMIT_WINDOW_MS || 60 * 1000),
+  max: Number(process.env.ADMIN_RATE_LIMIT_MAX || 30),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests from this IP, please try again later' }
+});
+
+// Login rate limiter to prevent brute force
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // 5 attempts
+  skipSuccessfulRequests: true,
+  message: { error: 'Too many login attempts, please try again later' }
+});
 const allowedOrigin = process.env.API_ALLOWED_ORIGIN || process.env.VITE_CLIENT_ORIGIN || '';
 if (allowedOrigin) app.use(cors({ origin: allowedOrigin, credentials: true })); else app.use(cors({ origin: true, credentials: true }));
 // cookie parser so we can read session cookies
@@ -80,6 +97,12 @@ const ensureSchema = async () => {
     await db.run('ALTER TABLE sessions ADD COLUMN csrfToken TEXT');
   } catch (e) {
     // ignore
+  }
+  // add isAdmin column if it doesn't exist yet
+  try {
+    await db.run('ALTER TABLE users ADD COLUMN isAdmin INTEGER DEFAULT 0');
+  } catch (e) {
+    // ignore - likely already added
   }
 };
 
@@ -215,17 +238,18 @@ app.post('/api/auth/register', async (req, res) => {
   if (process.env.COOKIE_SECURE === 'true' || (process.env.NODE_ENV === 'production' && process.env.COOKIE_SECURE !== 'false')) cookieOpts['secure'] = true;
     res.cookie('session_token', token, { ...cookieOpts, maxAge: ttlMs });
     // return csrf token for client to use in X-CSRF-Token header
+    userObj.isAdmin = false; // New users are not admin by default
     res.json({ success: true, expiresAt, csrfToken, user: userObj });
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }
 });
 
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', loginLimiter, async (req, res) => {
   const { email, password } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: 'email and password required' });
 
-  const rows = await db.all('SELECT id, password, data FROM users WHERE email = ?', [email]);
+  const rows = await db.all('SELECT id, password, data, isAdmin FROM users WHERE email = ?', [email]);
   if (!rows || rows.length === 0) return res.status(401).json({ error: 'Invalid credentials' });
 
   const row = rows[0];
@@ -252,6 +276,8 @@ app.post('/api/auth/login', async (req, res) => {
 
   const userObj = JSON.parse(row.data || '{}');
   if (userObj.password) delete userObj.password;
+  // Add isAdmin field from the separate column
+  userObj.isAdmin = row.isAdmin === 1;
 
   const token = randomUUID();
   const createdAt = Date.now();
@@ -345,18 +371,44 @@ async function requireCsrf(req, res, next) {
   }
 };
 
+// Admin protection middleware: requires user to be admin
+async function requireAdmin(req, res, next) {
+  try {
+    const userId = req.session?.userId;
+    if (!userId) return res.status(401).json({ error: 'Authentication required' });
+    
+    const rows = await db.all('SELECT isAdmin, data FROM users WHERE id = ?', [userId]);
+    if (!rows || rows.length === 0) return res.status(404).json({ error: 'User not found' });
+    
+    const user = rows[0];
+    const isAdmin = user.isAdmin === 1 || user.isAdmin === true;
+    
+    if (!isAdmin) {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+    
+    next();
+  } catch (e) {
+    console.error('requireAdmin error:', e);
+    next(e);
+  }
+};
+
 // Current user endpoint
 app.get('/api/me', validateSession, async (req, res) => {
   try {
     const userId = req.session?.userId;
     if (!userId) return res.status(404).json({ error: 'Not found' });
-    const rows = await db.all('SELECT data FROM users WHERE id = ?', [userId]);
+    const rows = await db.all('SELECT data, isAdmin FROM users WHERE id = ?', [userId]);
     if (!rows || rows.length === 0) return res.status(404).json({ error: 'User not found' });
     const u = JSON.parse(rows[0].data);
     if (u.password) delete u.password;
+    // Add isAdmin field from the separate column
+    u.isAdmin = rows[0].isAdmin === 1;
     res.json(u);
   } catch (e) {
-    res.status(500).json({ error: String(e) });
+    console.error('Get current user error:', e);
+    res.status(500).json({ error: 'Failed to retrieve user information' });
   }
 });
 
@@ -374,6 +426,177 @@ app.get('/api/export', async (req, res) => {
     }
   });
 });
+
+// ==================== ADMIN ENDPOINTS ====================
+
+// Admin: Get statistics
+app.get('/api/admin/stats', adminLimiter, validateSession, requireAdmin, async (req, res) => {
+  try {
+    const totalUsers = await db.all('SELECT COUNT(*) as count FROM users');
+    const totalCases = await db.all('SELECT COUNT(*) as count FROM cases');
+    const totalSessions = await db.all('SELECT COUNT(*) as count FROM sessions');
+    const recentCases = await db.all('SELECT id, timestamp, data FROM cases ORDER BY timestamp DESC LIMIT 10');
+    const recentUsers = await db.all('SELECT id, email, fullName, clinicName FROM users ORDER BY id DESC LIMIT 10');
+
+    res.json({
+      users: {
+        total: totalUsers[0]?.count || 0,
+        recent: recentUsers
+      },
+      cases: {
+        total: totalCases[0]?.count || 0,
+        recent: recentCases.map(c => ({
+          id: c.id,
+          timestamp: c.timestamp,
+          preview: JSON.parse(c.data || '{}')
+        }))
+      },
+      sessions: {
+        total: totalSessions[0]?.count || 0
+      }
+    });
+  } catch (e) {
+    console.error('Admin stats error:', e);
+    res.status(500).json({ error: 'Failed to retrieve statistics' });
+  }
+});
+
+// Admin: Download database backup
+app.get('/api/admin/backup', adminLimiter, validateSession, requireAdmin, async (req, res) => {
+  try {
+    const dbFile = process.env.DATABASE_FILE || path.resolve(process.cwd(), 'database.db');
+    
+    if (!fs.existsSync(dbFile)) {
+      return res.status(404).json({ error: 'Database file not found' });
+    }
+
+    const filename = `mozarela-backup-${Date.now()}.db`;
+    res.setHeader('Content-Type', 'application/x-sqlite3');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    
+    const fileStream = fs.createReadStream(dbFile);
+    fileStream.pipe(res);
+  } catch (e) {
+    console.error('Backup error:', e);
+    res.status(500).json({ error: 'Failed to create backup' });
+  }
+});
+
+// Admin: Get all cases with user info
+app.get('/api/admin/cases', validateSession, requireAdmin, async (req, res) => {
+  try {
+    const rows = await db.all(`
+      SELECT 
+        cases.id, 
+        cases.data, 
+        cases.timestamp,
+        users.email,
+        users.fullName
+      FROM cases
+      LEFT JOIN users ON JSON_EXTRACT(cases.data, '$.userId') = users.id
+      ORDER BY cases.timestamp DESC
+    `);
+    
+    const cases = rows.map(r => {
+      try {
+        const parsed = JSON.parse(r.data || '{}');
+        return {
+          id: r.id,
+          timestamp: r.timestamp,
+          userEmail: r.email,
+          userFullName: r.fullName,
+          data: parsed.data || parsed,
+          results: parsed.results
+        };
+      } catch (e) {
+        return { id: r.id, error: 'Failed to parse' };
+      }
+    });
+    
+    res.json(cases);
+  } catch (e) {
+    console.error('Admin get cases error:', e);
+    res.status(500).json({ error: 'Failed to retrieve cases' });
+  }
+});
+
+// Admin: Get all users
+app.get('/api/admin/users', validateSession, requireAdmin, async (req, res) => {
+  try {
+    const rows = await db.all('SELECT id, email, fullName, clinicName, isAdmin FROM users ORDER BY email');
+    res.json(rows);
+  } catch (e) {
+    console.error('Admin get users error:', e);
+    res.status(500).json({ error: 'Failed to retrieve users' });
+  }
+});
+
+// Admin: Delete user
+app.delete('/api/admin/users/:id', adminLimiter, validateSession, requireAdmin, requireCsrf, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Prevent deleting yourself
+    if (req.session?.userId === id) {
+      return res.status(400).json({ error: 'Cannot delete your own account' });
+    }
+    
+    // Delete user's sessions
+    await db.run('DELETE FROM sessions WHERE userId = ?', [id]);
+    
+    // Delete user's cases
+    await db.run('DELETE FROM cases WHERE JSON_EXTRACT(data, "$.userId") = ?', [id]);
+    
+    // Delete user
+    await db.run('DELETE FROM users WHERE id = ?', [id]);
+    
+    res.json({ success: true });
+  } catch (e) {
+    console.error('Admin delete user error:', e);
+    res.status(500).json({ error: 'Failed to delete user' });
+  }
+});
+
+// Admin: Delete case
+app.delete('/api/admin/cases/:id', adminLimiter, validateSession, requireAdmin, requireCsrf, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.run('DELETE FROM cases WHERE id = ?', [id]);
+    res.json({ success: true });
+  } catch (e) {
+    console.error('Admin delete case error:', e);
+    res.status(500).json({ error: 'Failed to delete case' });
+  }
+});
+
+// Admin: Toggle user admin status
+app.patch('/api/admin/users/:id/toggle-admin', adminLimiter, validateSession, requireAdmin, requireCsrf, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Prevent modifying yourself
+    if (req.session?.userId === id) {
+      return res.status(400).json({ error: 'Cannot modify your own admin status' });
+    }
+    
+    const rows = await db.all('SELECT isAdmin FROM users WHERE id = ?', [id]);
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const currentStatus = rows[0].isAdmin;
+    const newStatus = currentStatus === 1 ? 0 : 1;
+    
+    await db.run('UPDATE users SET isAdmin = ? WHERE id = ?', [newStatus, id]);
+    
+    res.json({ success: true, isAdmin: newStatus === 1 });
+  } catch (e) {
+    console.error('Admin toggle admin error:', e);
+    res.status(500).json({ error: 'Failed to update admin status' });
+  }
+});
+
+// ==================== END ADMIN ENDPOINTS ====================
 
 // AI Proxy endpoint - server-side only. Forwards a simple prompt to the provider.
 // Multer for file uploads (in-memory)
@@ -533,7 +756,7 @@ app.get('/_health', (req, res) => res.json({ ok: true, now: Date.now() }));
 const clientDist = path.resolve(process.cwd(), '..', 'Client', 'dist');
 if (fs.existsSync(clientDist)) {
   app.use(express.static(clientDist));
-  app.get('*', (req, res, next) => {
+  app.use((req, res, next) => {
     // let API routes pass through
     if (req.path.startsWith('/api') || req.path.startsWith('/_')) return next();
     res.sendFile(path.join(clientDist, 'index.html'));
