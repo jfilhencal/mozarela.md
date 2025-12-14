@@ -16,12 +16,41 @@ export const analyzeCase = async (caseData: CaseData): Promise<DiagnosisResponse
   const apiBase = (import.meta.env?.VITE_API_BASE as string) || '';
   if (!apiBase) throw new Error('VITE_API_BASE not configured - server proxy required for AI calls');
 
-  // Build prompt (same prompt as before)
-  const textPrompt = `Act as a Board-Certified Veterinary Internal Medicine Specialist.\nAnalyze the following case: Patient: ${caseData.patientName}; Species: ${caseData.species}; Breed: ${caseData.breed || 'Not specified'}; Age: ${caseData.age}; Weight: ${caseData.weight}; Clinical Signs: ${caseData.clinicalSigns}; Lab Findings: ${caseData.labFindings}`;
+  // Build comprehensive prompt with JSON schema
+  const textPrompt = `Act as a Board-Certified Veterinary Internal Medicine Specialist.
+
+Analyze the following case and provide a differential diagnosis list:
+
+PATIENT INFORMATION:
+- Name: ${caseData.patientName}
+- Species: ${caseData.species}
+- Breed: ${caseData.breed || 'Not specified'}
+- Age: ${caseData.age}
+- Weight: ${caseData.weight}
+
+CLINICAL PRESENTATION:
+- Clinical Signs: ${caseData.clinicalSigns}
+- Lab Findings: ${caseData.labFindings || 'None provided'}
+
+Provide your analysis in the following JSON format:
+{
+  "diagnoses": [
+    {
+      "name": "Diagnosis name",
+      "probability": 85,
+      "reasoning": "Detailed clinical reasoning for this diagnosis",
+      "suggested_tests": ["Test 1", "Test 2", "Test 3"],
+      "treatment_plan": "Detailed treatment recommendations"
+    }
+  ],
+  "summary": "A comprehensive clinical summary paragraph discussing the case, key differentials, and overall clinical approach"
+}
+
+Return ONLY valid JSON, no additional text. Provide 3-5 differential diagnoses ranked by probability (0-100).`;
 
   const form = new FormData();
   form.append('prompt', textPrompt);
-  form.append('model', 'models/gemini-1.5-flash'); // Use full model path
+  form.append('model', 'models/gemini-2.0-flash-exp'); // Use updated model
   caseData.attachments.forEach((f) => form.append('files', f));
 
   const csrf = (() => { try { return localStorage.getItem('mozarela_csrf') } catch(e){ return null } })();
