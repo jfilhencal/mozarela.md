@@ -763,11 +763,48 @@ if (fs.existsSync(clientDist)) {
   });
 }
 
+// Auto-create admin user if it doesn't exist
+async function ensureAdminUser() {
+  try {
+    const adminEmail = 'jfilhencal@gmail.com';
+    const adminPassword = 'das_iscas';
+    const adminFullName = 'Jorge Almeida';
+    
+    // Check if admin exists
+    const existingAdmin = await db.all('SELECT * FROM users WHERE email = ?', [adminEmail]);
+    
+    if (existingAdmin.length === 0) {
+      console.log('🔧 Creating default admin user...');
+      const passwordHash = await bcrypt.hash(adminPassword, 10);
+      const userId = randomUUID();
+      
+      // Create user data object
+      const userData = {
+        fullName: adminFullName,
+        clinicName: 'Admin',
+        caseHistory: []
+      };
+      
+      await db.run(
+        `INSERT INTO users (id, email, password, fullName, clinicName, data, isAdmin) 
+         VALUES (?, ?, ?, ?, ?, ?, 1)`,
+        [userId, adminEmail, passwordHash, adminFullName, 'Admin', JSON.stringify(userData)]
+      );
+      console.log(`✅ Admin user created: ${adminEmail} / ${adminPassword}`);
+    } else {
+      console.log('✓ Admin user already exists');
+    }
+  } catch (error) {
+    console.error('⚠️  Failed to ensure admin user:', error.message);
+  }
+}
+
 // Start server after ensuring schema
 // Always use port 3001 for API (nginx will proxy from Railway's PORT)
 const PORT = Number(process.env.API_PORT || 3001);
 let server = null;
-ensureSchema().then(() => {
+ensureSchema().then(async () => {
+  await ensureAdminUser();
   server = app.listen(PORT, () => console.log(`API running on http://localhost:${PORT}`));
 
   // graceful shutdown
