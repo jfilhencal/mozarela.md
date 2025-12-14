@@ -53,7 +53,7 @@ export interface CaseData {
 export interface SavedCase {
   id: string;
   timestamp: number;
-  userId?: string; // Link case to specific user
+  userId: string; // Link case to specific user
   data: CaseData;
   results: DiagnosisResponse;
 }

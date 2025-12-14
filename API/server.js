@@ -133,9 +133,18 @@ app.post("/api/items", async (req, res) => {
 });
 
 // Cases
-app.get('/api/cases', async (req, res) => {
+app.get('/api/cases', validateSession, async (req, res) => {
   try {
-    const rows = await db.all('SELECT id, data, timestamp FROM cases ORDER BY timestamp DESC');
+    const userId = req.session?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    // Filter cases by userId using JSON_EXTRACT
+    const rows = await db.all(
+      'SELECT id, data, timestamp FROM cases WHERE JSON_EXTRACT(data, "$.userId") = ? ORDER BY timestamp DESC',
+      [userId]
+    );
     const cases = rows.map(r => {
       try {
         const parsed = JSON.parse(r.data);
@@ -163,20 +172,55 @@ app.get('/api/cases', async (req, res) => {
   }
 });
 
-app.post('/api/cases', requireCsrf, async (req, res) => {
-  const c = req.body; // expect a SavedCase with id, timestamp, data, results
-  const id = c.id || randomUUID();
-  const timestamp = c.timestamp || Date.now();
-  // Store the entire SavedCase object (including data and results) in the data column
-  const data = JSON.stringify(c);
-  await db.run('INSERT OR REPLACE INTO cases (id, data, timestamp) VALUES (?, ?, ?)', [id, data, timestamp]);
-  res.json({ success: true, id });
+app.post('/api/cases', validateSession, requireCsrf, async (req, res) => {
+  try {
+    const userId = req.session?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    const c = req.body; // expect a SavedCase with id, timestamp, data, results
+    const id = c.id || randomUUID();
+    const timestamp = c.timestamp || Date.now();
+    
+    // Ensure the case is associated with the current user
+    const caseWithUser = { ...c, id, timestamp, userId };
+    const data = JSON.stringify(caseWithUser);
+    
+    await db.run('INSERT OR REPLACE INTO cases (id, data, timestamp) VALUES (?, ?, ?)', [id, data, timestamp]);
+    res.json({ success: true, id });
+  } catch (e) {
+    console.error('POST /api/cases error:', e);
+    res.status(500).json({ error: String(e) });
+  }
 });
 
-app.delete('/api/cases/:id', async (req, res) => {
-  const { id } = req.params;
-  await db.run('DELETE FROM cases WHERE id = ?', [id]);
-  res.json({ success: true });
+app.delete('/api/cases/:id', validateSession, requireCsrf, async (req, res) => {
+  try {
+    const userId = req.session?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    const { id } = req.params;
+    
+    // Only allow users to delete their own cases
+    const existing = await db.all('SELECT data FROM cases WHERE id = ?', [id]);
+    if (existing.length === 0) {
+      return res.status(404).json({ error: 'Case not found' });
+    }
+    
+    const caseData = JSON.parse(existing[0].data);
+    if (caseData.userId !== userId) {
+      return res.status(403).json({ error: 'You can only delete your own cases' });
+    }
+    
+    await db.run('DELETE FROM cases WHERE id = ?', [id]);
+    res.json({ success: true });
+  } catch (e) {
+    console.error('DELETE /api/cases error:', e);
+    res.status(500).json({ error: String(e) });
+  }
 });
 
 // Users

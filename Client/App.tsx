@@ -103,10 +103,14 @@ const App: React.FC = () => {
       setResults(response);
 
       // Auto-save the case to Database
+      if (!currentUser?.id) {
+        throw new Error('User must be logged in to save cases');
+      }
+
       const newCase: SavedCase = {
         id: crypto.randomUUID(),
         timestamp: Date.now(),
-        userId: currentUser?.id, // Link to current user
+        userId: currentUser.id, // Link to current user
         data: {
             patientName: data.patientName,
             species: data.species,
