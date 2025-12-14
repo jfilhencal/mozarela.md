@@ -107,20 +107,30 @@ export const analyzeWithScoring = async (caseData: CaseData): Promise<DiagnosisR
   
   if (apiBase) {
     try {
-      const considerationsPrompt = `You are a veterinary clinical assistant. Based on the protocol analysis below, provide brief clinical considerations.
+      const considerationsPrompt = `You are a veterinary clinical assistant. Provide brief clinical considerations relating the patient's signalment to the protocol findings. Do NOT modify or question the differential diagnosis scores - those are determined by the protocol file and are final.
 
-PATIENT DATA:
+PATIENT SIGNALMENT:
 - Species: ${caseData.species}
 - Breed: ${caseData.breed || 'Unknown'}
 - Age: ${caseData.age}
 - Weight: ${caseData.weight}
+
+CLINICAL PRESENTATION:
 - Clinical Signs: ${caseData.clinicalSigns}
 - Lab Findings: ${caseData.labFindings || 'None'}
 
-PROTOCOL ANALYSIS RESULTS (scores based on protocol file):
-${diagnoses.slice(0, 5).map(d => `- ${d.name}: ${d.probability}% probability`).join('\n')}
+PROTOCOL-BASED DIFFERENTIALS (scores are final, do not modify):
+${diagnoses.slice(0, 5).map(d => `- ${d.name}: ${d.probability}%`).join('\n')}
 
-Provide 2-3 sentences of clinical considerations based on the signalment and findings. Do NOT adjust the scores. Return ONLY plain text, no JSON.`;
+Provide 2-3 sentences of clinical considerations that relate the patient's signalment to these differentials. Focus on:
+1. How the patient's breed, age, or species may influence the likelihood or presentation of the top differentials
+2. Signalment-specific diagnostic or prognostic considerations
+3. Any breed/age predispositions that support or contextualize the protocol findings
+
+Return a JSON object with this structure:
+{
+  "considerations": "Your clinical considerations text here"
+}`;
 
       const form = new FormData();
       form.append('prompt', considerationsPrompt);
@@ -145,14 +155,28 @@ Provide 2-3 sentences of clinical considerations based on the signalment and fin
         const json = await res.json();
         console.log('[Scoring] AI response JSON:', json);
         
-        // Try multiple paths to get the text
-        const considerations = json.text || json.parsed || (json.raw && json.raw.text) || '';
+        // The server returns either { parsed: {...} } or { text: "..." }
+        let considerations = '';
+        
+        if (json.parsed && json.parsed.considerations) {
+          considerations = json.parsed.considerations;
+        } else if (json.text) {
+          // Try to parse the text as JSON
+          try {
+            const parsed = JSON.parse(json.text);
+            if (parsed.considerations) {
+              considerations = parsed.considerations;
+            }
+          } catch (e) {
+            // If it's not JSON, use it as is
+            considerations = json.text;
+          }
+        }
+        
         console.log('[Scoring] Extracted considerations:', considerations);
         
         if (considerations && typeof considerations === 'string' && considerations.trim()) {
-          summary += `\n\nClinical Considerations: ${considerations.trim()}`;
-        } else if (typeof considerations === 'object' && considerations.text) {
-          summary += `\n\nClinical Considerations: ${considerations.text.trim()}`;
+          summary += `\n\n${considerations.trim()}`;
         }
       } else {
         console.warn('[Scoring] AI response not OK:', await res.text());
